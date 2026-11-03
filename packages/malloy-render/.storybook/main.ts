@@ -1,5 +1,5 @@
 import {join, dirname} from 'path';
-import type {InlineConfig} from 'vite';
+import type {InlineConfig, PluginOption} from 'vite';
 import {mergeConfig} from 'vite';
 import type {StorybookConfig} from '@storybook/html-vite';
 import {
@@ -13,6 +13,26 @@ import {
  */
 function getAbsolutePath(value) {
   return dirname(require.resolve(join(value, 'package.json')));
+}
+
+// Fork-only (demo): Cypress rewrites `parent.location` and `top.location` in
+// served scripts to `self.location` (its frame-busting guard), which breaks
+// MalloyElement's `this.parent.location` getter. Bracket access has the same
+// meaning and is left alone.
+function cypressSafeLocation(): PluginOption {
+  return {
+    name: 'fork-cypress-safe-location',
+    transform(code, id) {
+      if (id.includes('/node_modules/') || !/\.tsx?$/.test(id.split('?')[0])) {
+        return null;
+      }
+      const out = code.replace(
+        /\b(top|parent)\.(location|frames)\b/g,
+        "$1['$2']"
+      );
+      return out === code ? null : {code: out, map: null};
+    },
+  };
 }
 
 const config: StorybookConfig = {
@@ -82,7 +102,7 @@ const config: StorybookConfig = {
         },
       },
       assetsInclude: ['/sb-preview/runtime.js'],
-      plugins: [viteMalloyStoriesPlugin()],
+      plugins: [viteMalloyStoriesPlugin(), cypressSafeLocation()],
     };
     const finalConfig = mergeConfig(config, configOverride);
     // Filter out dev tools plugin

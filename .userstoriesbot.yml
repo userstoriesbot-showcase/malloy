@@ -1,0 +1,25 @@
+# Showcase fork only (never part of an upstream pull request).
+version: 1
+app:
+  # The malloy package's ANTLR codegen needs Java, which the runtime image lacks:
+  # fetch a portable JRE. The browser has no network, so fetch the duckdb-wasm
+  # extensions the stories load (served by storybook's static dir, see
+  # .storybook/preview.ts). `npm run dev` builds every package storybook needs
+  # (peak about 0.8 GB; the full `npm run build` peaks about 2.5 GB).
+  install: >-
+    set -o pipefail && mkdir -p "$HOME/jre"
+    && curl -sSfL "https://api.adoptium.net/v3/binary/latest/21/ga/linux/$(uname -m | sed -e s/x86_64/x64/ -e s/arm64/aarch64/)/jre/hotspot/normal/eclipse" | tar xz -C "$HOME/jre" --strip-components=1
+    && export PATH="$HOME/jre/bin:$PATH"
+    && for b in wasm_eh wasm_mvp; do E="packages/malloy-render/src/stories/static/duckdb-extensions/v1.5.4/$b"; mkdir -p "$E"; for x in json icu parquet; do curl -sSfL -o "$E/$x.duckdb_extension.wasm" "https://extensions.duckdb.org/v1.5.4/$b/$x.duckdb_extension.wasm" || exit 1; done; done
+    && npm ci --include=dev
+    && npm run dev
+  start: npx -w packages/malloy-render storybook dev -p {port} --host 0.0.0.0 --ci
+  url: http://localhost:{port}
+  readyPath: /index.json
+  readyStatus: 200
+  runtime: node24
+  env:
+    NODE_ENV: development
+demo:
+  maxVideos: 1
+  beforePass: true
